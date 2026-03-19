@@ -1,0 +1,281 @@
+.page {
+  min-height: calc(100vh - 70px);
+  background:
+    radial-gradient(circle at 84% 8%, rgba(255, 177, 65, 0.16), transparent 33%),
+    radial-gradient(circle at 15% 25%, rgba(26, 148, 255, 0.15), transparent 40%),
+    #eef4f9;
+  padding: 30px 20px 50px;
+}
+
+.container {
+  max-width: 1260px;
+  margin: 0 auto;
+}
+
+.loading,
+.error,
+.denied {
+  margin: 24px;
+  padding: 16px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.error,
+.denied {
+  background: #ffe6e6;
+  color: #b03b3b;
+}
+
+.header {
+  margin-bottom: 20px;
+}
+
+.header h1 {
+  font-size: clamp(30px, 4.5vw, 42px);
+  color: #11253e;
+  margin-bottom: 8px;
+}
+
+.header p {
+  color: #466186;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.statCard {
+  background: linear-gradient(145deg, #173255, #1d3f6b);
+  color: #ffffff;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 14px 25px rgba(21, 45, 80, 0.2);
+}
+
+.statCard span {
+  display: block;
+  opacity: 0.84;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.statCard strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 24px;
+}
+
+.layoutGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #d6e0ec;
+  border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(25, 53, 92, 0.09);
+  padding: 16px;
+}
+
+.card h2 {
+  color: #11253e;
+  margin-bottom: 12px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 780px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 10px;
+  border-bottom: 1px solid #e8edf4;
+  color: #1f3858;
+  font-size: 14px;
+}
+
+.table th {
+  color: #4e6d92;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.actionRow {
+  display: flex;
+  gap: 8px;
+}
+
+.actionRow button {
+  border: none;
+  border-radius: 8px;
+  background: #1d74d9;
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.actionRow .danger {
+  background: #d84343;
+}
+
+.chatLayout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 12px;
+}
+
+.threadList {
+  border: 1px solid #deebf6;
+  border-radius: 12px;
+  padding: 10px;
+  max-height: 460px;
+  overflow-y: auto;
+  background: #f7fbff;
+}
+
+.threadBtn {
+  width: 100%;
+  border: 1px solid #dce8f6;
+  background: #ffffff;
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.threadBtn strong {
+  display: block;
+  color: #14335a;
+}
+
+.threadBtn small {
+  color: #567198;
+}
+
+.threadBtn span {
+  background: #ff8a00;
+  color: #fff;
+  border-radius: 999px;
+  min-width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.threadBtnActive {
+  border-color: #1d74d9;
+  box-shadow: 0 0 0 2px rgba(29, 116, 217, 0.15);
+}
+
+.chatWindow {
+  border: 1px solid #deebf6;
+  border-radius: 12px;
+  padding: 10px;
+  background: #f8fbfe;
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+}
+
+.chatHeader {
+  border-bottom: 1px solid #e4eef8;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.chatHeader h3 {
+  color: #163a65;
+}
+
+.chatHeader small {
+  color: #5f7da4;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.msgAdmin,
+.msgPlayer {
+  max-width: 80%;
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.msgAdmin {
+  align-self: flex-end;
+  background: #1d74d9;
+  color: #fff;
+}
+
+.msgPlayer {
+  align-self: flex-start;
+  background: #e8f3ff;
+  color: #1c3d63;
+}
+
+.msgAdmin small,
+.msgPlayer small {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.chatForm {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.chatForm input {
+  border: 1px solid #c8daf0;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.chatForm button {
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #1d74d9, #1658a6);
+  color: #fff;
+  padding: 10px 14px;
+  font-weight: 600;
+}
+
+@media (max-width: 980px) {
+  .chatLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .threadList {
+    max-height: 220px;
+  }
+}
