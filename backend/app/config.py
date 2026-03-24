@@ -60,6 +60,10 @@ class Settings(BaseSettings):
         "http://localhost:3000,http://127.0.0.1:3000",
     )
 
+    # MongoDB data store
+    MONGODB_URI: str = env_first(["MONGODB_URI", "MONGODBURI"], "")
+    MONGODB_DB_NAME: str = env_first(["MONGODB_DB_NAME", "MONGODBDBNAME"], "ssc")
+
     # Firebase Auth integration
     FIREBASE_AUTH_ENABLED: bool = env_first_bool(
         ["FIREBASE_AUTH_ENABLED", "FIREBASEAUTHENABLED"],

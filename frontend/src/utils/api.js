@@ -27,6 +27,43 @@ const api = axios.create({
   }
 });
 
+const clearClientAuthState = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  window.dispatchEvent(new Event('authchange'));
+};
+
+const getFirebaseAuthErrorMessage = (error, fallbackMessage) => {
+  const code = error?.code || '';
+
+  if (
+    code === 'auth/invalid-credential' ||
+    code === 'auth/wrong-password' ||
+    code === 'auth/user-not-found' ||
+    code === 'auth/invalid-login-credentials'
+  ) {
+    return 'Invalid email or password';
+  }
+
+  if (code === 'auth/invalid-email') {
+    return 'Please enter a valid email address';
+  }
+
+  if (code === 'auth/email-already-in-use') {
+    return 'This email is already registered';
+  }
+
+  if (code === 'auth/weak-password') {
+    return 'Password is too weak. Use at least 6 characters';
+  }
+
+  if (code === 'auth/popup-closed-by-user') {
+    return 'Google sign-in was cancelled';
+  }
+
+  return fallbackMessage;
+};
+
 // Add token to requests
 api.interceptors.request.use(async (config) => {
   let token = localStorage.getItem('token');
@@ -44,6 +81,46 @@ api.interceptors.request.use(async (config) => {
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config || {};
+    const status = error?.response?.status;
+
+    if (status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      if (isFirebaseConfigured && firebaseAuth?.currentUser) {
+        try {
+          const refreshedToken = await firebaseAuth.currentUser.getIdToken(true);
+          if (refreshedToken) {
+            localStorage.setItem('token', refreshedToken);
+            originalRequest.headers = {
+              ...(originalRequest.headers || {}),
+              Authorization: `Bearer ${refreshedToken}`,
+            };
+            return api(originalRequest);
+          }
+        } catch (_refreshError) {
+          // Fall through to clear stale client auth state.
+        }
+      }
+
+      if (isFirebaseConfigured && firebaseAuth) {
+        try {
+          await signOut(firebaseAuth);
+        } catch (_signOutError) {
+          // Ignore signOut errors; local state reset below is enough.
+        }
+      }
+
+      clearClientAuthState();
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 const hydrateLocalUserFromBackend = async (accessToken) => {
   if (accessToken) {
@@ -119,7 +196,7 @@ export const authService = {
       const accessToken = await cred.user.getIdToken();
       return { data: await hydrateLocalUserFromBackend(accessToken) };
     } catch (error) {
-      const message = error?.message || 'Registration failed';
+      const message = getFirebaseAuthErrorMessage(error, error?.message || 'Registration failed');
       throw { response: { data: { detail: message } } };
     }
 
@@ -135,7 +212,13 @@ export const authService = {
       const accessToken = await cred.user.getIdToken();
       return { data: await hydrateLocalUserFromBackend(accessToken) };
     } catch (error) {
-      throw { response: { data: { detail: error?.message || 'Login failed' } } };
+      throw {
+        response: {
+          data: {
+            detail: getFirebaseAuthErrorMessage(error, error?.message || 'Login failed'),
+          },
+        },
+      };
     }
   },
 
@@ -164,7 +247,13 @@ export const authService = {
       const accessToken = await cred.user.getIdToken();
       return { data: await hydrateLocalUserFromBackend(accessToken) };
     } catch (error) {
-      throw { response: { data: { detail: error?.message || 'Google login failed' } } };
+      throw {
+        response: {
+          data: {
+            detail: getFirebaseAuthErrorMessage(error, error?.message || 'Google login failed'),
+          },
+        },
+      };
     }
   },
 

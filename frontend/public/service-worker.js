@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ssc-app-v1';
+const CACHE_NAME = 'ssc-app-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -43,6 +43,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Runtime env file must always come fresh and should never be cached.
+  if (url.pathname === '/env.js') {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
 
   // Skip cross-origin requests and non-GET requests
   if (url.origin !== location.origin || request.method !== 'GET') {

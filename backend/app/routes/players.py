@@ -8,6 +8,16 @@ from app.utils.logger import log_action
 router = APIRouter(prefix="/players", tags=["Players"])
 
 
+def _same_id(left, right) -> bool:
+    if left is None or right is None:
+        return False
+    return str(left) == str(right)
+
+
+def _matches_user_identity(row: dict, value: Union[int, str]) -> bool:
+    return _same_id(row.get("id"), value) or _same_id(row.get("uid"), value)
+
+
 def _check_and_downgrade_premium(user: dict) -> dict:
     from datetime import datetime, timezone
     
@@ -35,7 +45,7 @@ def _check_and_downgrade_premium(user: dict) -> dict:
 @router.get("/me", response_model=UserResponse)
 async def get_current_player(current_user=Depends(get_current_user)):
     """Get current logged-in player's profile"""
-    user = first_doc(COLL.users, predicate=lambda row: row.get("id") == current_user.id)
+    user = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, current_user.id))
     if not user:
         raise HTTPException(status_code=404, detail="Player not found")
     user = _check_and_downgrade_premium(user)
@@ -73,7 +83,7 @@ async def update_career_stats(
 ):
     """Update current player's career statistics"""
 
-    user = first_doc(COLL.users, predicate=lambda row: row.get("id") == current_user.id)
+    user = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, current_user.id))
     if not user:
         raise HTTPException(status_code=404, detail="Player not found")
 
@@ -184,7 +194,7 @@ async def get_top_wicket_takers(limit: int = 10):
 async def get_player(player_id: Union[int, str]):
     """Get player profile by ID"""
     
-    player = first_doc(COLL.users, predicate=lambda row: row.get("id") == player_id)
+    player = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, player_id))
     
     if not player:
         raise HTTPException(

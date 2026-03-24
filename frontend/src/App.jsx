@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
-import { PWAInstallGuide } from './components/PWAInstallGuide';
 import { HomePage } from './pages/Home';
 import { LoginPage, RegisterPage } from './pages/Auth';
 import { DashboardPage } from './pages/Dashboard';
@@ -87,7 +86,6 @@ function App() {
           )}
         </Routes>
       </BrowserRouter>
-      <PWAInstallGuide />
     </>
   );
 }

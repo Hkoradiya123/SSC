@@ -17,6 +17,51 @@ from app.utils.logger import log_action
 router = APIRouter(prefix="/matches", tags=["Matches"])
 
 
+def _normalize_match_for_response(row: dict) -> dict | None:
+    """Normalize a match row to MatchResponse shape; skip incompatible legacy docs."""
+    try:
+        match_id = int(row.get("id"))
+    except (TypeError, ValueError):
+        return None
+
+    title = row.get("title")
+    created_by_id = row.get("created_by_id")
+    team_a_name = row.get("team_a_name")
+    team_b_name = row.get("team_b_name")
+    overs_per_innings = row.get("overs_per_innings")
+    status = row.get("status")
+    current_innings = row.get("current_innings")
+    created_at = row.get("created_at") or row.get("createdAt")
+
+    # Legacy docs from unrelated schema (teamA/teamB/scoreState, etc.) are ignored.
+    if not all(
+        [
+            title,
+            created_by_id is not None,
+            team_a_name,
+            team_b_name,
+            overs_per_innings is not None,
+            status,
+            current_innings is not None,
+            created_at is not None,
+        ]
+    ):
+        return None
+
+    return {
+        "id": match_id,
+        "title": str(title),
+        "created_by_id": created_by_id,
+        "team_a_name": str(team_a_name),
+        "team_b_name": str(team_b_name),
+        "overs_per_innings": int(overs_per_innings),
+        "status": str(status).lower(),
+        "current_innings": int(current_innings),
+        "batting_team": row.get("batting_team"),
+        "created_at": created_at,
+    }
+
+
 def ensure_match_editor(match_obj: dict, current_user):
     if current_user.role == "admin":
         return
@@ -252,7 +297,12 @@ async def create_match(payload: MatchCreate, current_user=Depends(get_current_us
 async def list_matches(current_user=Depends(get_current_user)):
     _ = current_user
     matches = list_docs(COLL.matches, sort_key="created_at", reverse=True, limit=50)
-    return [as_obj(row) for row in matches]
+    normalized = []
+    for row in matches:
+        item = _normalize_match_for_response(row)
+        if item is not None:
+            normalized.append(as_obj(item))
+    return normalized
 
 
 @router.get("/{match_id}", response_model=MatchDetailResponse)

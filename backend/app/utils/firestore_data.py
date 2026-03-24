@@ -5,11 +5,11 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, Callable
 
-import firebase_admin
-from firebase_admin import firestore
+from bson import ObjectId
+from pymongo import MongoClient, ReturnDocument
+from pymongo.collection import Collection
 
 from app.config import settings
-from app.utils.auth import _init_firebase_if_needed
 
 
 @dataclass
@@ -27,57 +27,107 @@ class CollectionNames:
 
 COLL = CollectionNames()
 
-
-def _client():
-    if not settings.FIREBASE_AUTH_ENABLED:
-        raise RuntimeError("FIREBASE_AUTH_ENABLED must be True for Firestore mode")
-
-    _init_firebase_if_needed()
-    if not firebase_admin._apps:
-        raise RuntimeError("Firebase Admin is not initialized. Check service account config.")
-
-    return firestore.client()
+_mongo_client: MongoClient | None = None
 
 
-def _counter_doc(collection: str) -> str:
+def _mongo_db_name() -> str:
+    return settings.MONGODB_DB_NAME or "ssc"
+
+
+def _client() -> MongoClient:
+    global _mongo_client
+
+    if _mongo_client is not None:
+        return _mongo_client
+
+    if not settings.MONGODB_URI:
+        raise RuntimeError("MONGODB_URI is not configured")
+
+    _mongo_client = MongoClient(settings.MONGODB_URI, tz_aware=True)
+    return _mongo_client
+
+
+def _collection(name: str) -> Collection:
+    db = _client()[_mongo_db_name()]
+    return db[name]
+
+
+def _meta_collection() -> Collection:
+    db = _client()[_mongo_db_name()]
+    return db["_meta"]
+
+
+def _counter_doc_key(collection: str) -> str:
     return f"counter::{collection}"
 
 
 def next_int_id(collection: str) -> int:
-    client = _client()
-    ref = client.collection("_meta").document(_counter_doc(collection))
-    snap = ref.get()
-    current = 0
-    if snap.exists:
-        current = int((snap.to_dict() or {}).get("value", 0))
-    new_value = current + 1
-    ref.set({"value": new_value}, merge=True)
-    return new_value
+    doc = _meta_collection().find_one_and_update(
+        {"key": _counter_doc_key(collection)},
+        {"$inc": {"value": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    return int((doc or {}).get("value", 1))
 
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _coerce_doc_id(value: str | int) -> str | int:
+    value_str = str(value)
+    return int(value_str) if value_str.isdigit() else value_str
+
+
+def _serialize_for_mongo(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _prepare_payload(data: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for key, value in data.items():
+        payload[key] = _serialize_for_mongo(value)
+    return payload
+
+
+def _row_from_doc(doc: dict[str, Any]) -> dict[str, Any]:
+    row = dict(doc)
+    mongo_id = row.pop("_id", None)
+    if mongo_id is not None:
+        row["_mongo_id"] = str(mongo_id)
+    if "id" not in row:
+        row["id"] = row.get("_mongo_id", "")
+    row.setdefault("_doc_id", row.get("id"))
+    return row
+
+
 def create_doc(collection: str, data: dict[str, Any], doc_id: str | None = None) -> dict[str, Any]:
-    client = _client()
-    payload = dict(data)
+    coll = _collection(collection)
+    payload = _prepare_payload(dict(data))
+
     if doc_id is None:
-        doc_id = str(payload.get("id") or next_int_id(collection))
-    payload.setdefault("id", int(doc_id) if doc_id.isdigit() else doc_id)
-    client.collection(collection).document(doc_id).set(payload, merge=True)
+        payload["id"] = payload.get("id") or next_int_id(collection)
+    else:
+        payload["id"] = _coerce_doc_id(doc_id)
+
+    coll.update_one({"id": payload["id"]}, {"$set": payload}, upsert=True)
+    payload.setdefault("_doc_id", payload["id"])
     return payload
 
 
 def get_doc(collection: str, doc_id: str | int) -> dict[str, Any] | None:
-    client = _client()
-    snap = client.collection(collection).document(str(doc_id)).get()
-    if not snap.exists:
+    coll = _collection(collection)
+    coerced = _coerce_doc_id(doc_id)
+
+    doc = coll.find_one({"id": coerced})
+    if doc is None and ObjectId.is_valid(str(doc_id)):
+        doc = coll.find_one({"_id": ObjectId(str(doc_id))})
+    if doc is None:
         return None
-    data = snap.to_dict() or {}
-    if "id" not in data:
-        data["id"] = int(str(doc_id)) if str(doc_id).isdigit() else str(doc_id)
-    return data
+    return _row_from_doc(doc)
 
 
 def update_doc(collection: str, doc_id: str | int, patch: dict[str, Any]) -> dict[str, Any] | None:
@@ -85,18 +135,24 @@ def update_doc(collection: str, doc_id: str | int, patch: dict[str, Any]) -> dic
     if not existing:
         return None
     merged = dict(existing)
-    merged.update(patch)
+    merged.update(_prepare_payload(patch))
     create_doc(collection, merged, str(doc_id))
     return merged
 
 
 def delete_doc(collection: str, doc_id: str | int) -> bool:
-    client = _client()
-    snap = client.collection(collection).document(str(doc_id)).get()
-    if not snap.exists:
+    coll = _collection(collection)
+    coerced = _coerce_doc_id(doc_id)
+
+    result = coll.delete_one({"id": coerced})
+    if result.deleted_count:
+        return True
+
+    if not ObjectId.is_valid(str(doc_id)):
         return False
-    client.collection(collection).document(str(doc_id)).delete()
-    return True
+
+    oid_result = coll.delete_one({"_id": ObjectId(str(doc_id))})
+    return bool(oid_result.deleted_count)
 
 def _parse_datetime(value: Any) -> datetime | None:
     """Parse a value to datetime if it's a datetime string. Always returns timezone-aware UTC."""
@@ -150,18 +206,10 @@ def list_docs(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    client = _client()
+    coll = _collection(collection)
     rows: list[dict[str, Any]] = []
-    for snap in client.collection(collection).stream():
-        row = snap.to_dict() or {}
-        doc_id = snap.id
-        
-        # Always track the actual Firestore document ID
-        row["_doc_id"] = doc_id
-        
-        # If no id field, use the Firestore document ID
-        if "id" not in row:
-            row["id"] = int(doc_id) if doc_id.isdigit() else doc_id
+    for doc in coll.find({}):
+        row = _row_from_doc(doc)
         if predicate and not predicate(row):
             continue
         rows.append(row)
@@ -193,9 +241,9 @@ def as_obj(data: dict[str, Any]) -> Any:
 def normalize_user(user: dict[str, Any]) -> dict[str, Any]:
     """Ensure all required user fields exist with defaults."""
     created_at = user.get("created_at") or user.get("createdAt") or now_utc()
-    
-    # Prefer uid (Firebase UID) over id for consistency across Firestore
-    user_id = user.get("uid") or user.get("id", "")
+
+    # Keep canonical numeric/string user id stable for API routes and links.
+    user_id = user.get("id") if user.get("id") is not None else user.get("uid", "")
     
     defaults = {
         "id": user_id,

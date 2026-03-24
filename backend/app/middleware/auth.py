@@ -1,5 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.config import settings
 from app.utils.auth import decode_token
 from app.utils.firestore_data import COLL, as_obj, create_doc, first_doc, now_utc, update_doc
 
@@ -12,6 +13,7 @@ async def get_current_user(
     """Get current authenticated user"""
     token = credentials.credentials
     token_data = decode_token(token)
+    token_sub = token_data.get("sub")
     email = token_data.get("email")
     display_name = token_data.get("name")
     
@@ -20,11 +22,15 @@ async def get_current_user(
     if user and user.get("updated_at") is None:
         user["updated_at"] = now_utc()
 
+    if user and token_sub and not user.get("uid"):
+        user = update_doc(COLL.users, user["id"], {"uid": token_sub, "updated_at": now_utc()}) or user
+
     if not user and email:
         inferred_name = display_name or email.split("@")[0]
         user = create_doc(
             COLL.users,
             {
+                "uid": token_sub,
                 "name": inferred_name,
                 "email": email,
                 "password": "",
@@ -62,7 +68,11 @@ async def get_admin_user(
     current_user = Depends(get_current_user),
 ):
     """Verify current user is admin"""
-    if current_user.role != "admin":
+    user_role = (getattr(current_user, "role", "") or "").lower()
+    user_email = (getattr(current_user, "email", "") or "").lower()
+    admin_email = (settings.ADMIN_EMAIL or "").lower()
+
+    if user_role != "admin" and user_email != admin_email:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admins can access this resource",

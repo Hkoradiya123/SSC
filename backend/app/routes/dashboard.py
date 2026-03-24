@@ -75,20 +75,20 @@ async def get_extended_overview():
         top_performance = list_docs(COLL.performance_logs, sort_key="performance_rating", reverse=True, limit=1)
         top = top_performance[0] if top_performance else None
 
-    return {
-        "total_players": total_players,
-        "premium_players": premium_players,
-        "total_matches": total_matches,
-        "total_runs": total_runs,
-        "total_wickets": total_wickets,
-        "avg_runs_per_match": avg_runs_per_match,
-        "premium_ratio": premium_ratio,
-        "top_performance": {
-            "match_date": top.get("match_date") if top else None,
-            "performance_rating": top.get("performance_rating", 0) if top else 0,
-            "runs_scored": top.get("runs_scored", 0) if top else 0,
-            "wickets_taken": top.get("wickets_taken", 0) if top else 0,
-        },
+        return {
+            "total_players": total_players,
+            "premium_players": premium_players,
+            "total_matches": total_matches,
+            "total_runs": total_runs,
+            "total_wickets": total_wickets,
+            "avg_runs_per_match": avg_runs_per_match,
+            "premium_ratio": premium_ratio,
+            "top_performance": {
+                "match_date": top.get("match_date") if top else None,
+                "performance_rating": top.get("performance_rating", 0) if top else 0,
+                "runs_scored": top.get("runs_scored", 0) if top else 0,
+                "wickets_taken": top.get("wickets_taken", 0) if top else 0,
+            },
         }
     
     try:

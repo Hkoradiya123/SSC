@@ -9,8 +9,22 @@ from app.utils.logger import log_action
 router = APIRouter(prefix="/performance", tags=["Performance"])
 
 
-def recalculate_user_career_stats(user_id: int) -> None:
-    logs = list_docs(COLL.performance_logs, predicate=lambda row: row.get("user_id") == user_id)
+def _same_id(left, right) -> bool:
+    if left is None or right is None:
+        return False
+    return str(left) == str(right)
+
+
+def _matches_user_identity(row: dict, value: Union[int, str]) -> bool:
+    return _same_id(row.get("id"), value) or _same_id(row.get("uid"), value)
+
+
+def _matches_log_user(log_row: dict, value: Union[int, str]) -> bool:
+    return _same_id(log_row.get("user_id"), value) or _same_id(log_row.get("uid"), value)
+
+
+def recalculate_user_career_stats(user_id: Union[int, str]) -> None:
+    logs = list_docs(COLL.performance_logs, predicate=lambda row: _matches_log_user(row, user_id))
 
     matches = len(logs)
     runs = sum(int(log.get("runs_scored", 0)) for log in logs)
@@ -141,7 +155,7 @@ async def get_my_performance_logs(
 ):
     logs = list_docs(
         COLL.performance_logs,
-        predicate=lambda row: row.get("user_id") == current_user.id,
+        predicate=lambda row: _matches_log_user(row, current_user.id),
         sort_key="match_date",
         reverse=True,
         offset=skip,
@@ -158,7 +172,7 @@ async def get_my_match_history(
 ):
     logs = list_docs(
         COLL.performance_logs,
-        predicate=lambda row: row.get("user_id") == current_user.id,
+        predicate=lambda row: _matches_log_user(row, current_user.id),
         sort_key="match_date",
         reverse=True,
         offset=skip,
@@ -203,7 +217,7 @@ async def update_performance_log(
 ):
     perf_log = first_doc(
         COLL.performance_logs,
-        predicate=lambda row: row.get("id") == log_id and row.get("user_id") == current_user.id,
+        predicate=lambda row: _same_id(row.get("id"), log_id) and _same_id(row.get("user_id"), current_user.id),
     )
 
     if not perf_log:
@@ -230,7 +244,7 @@ async def delete_performance_log(
 ):
     perf_log = first_doc(
         COLL.performance_logs,
-        predicate=lambda row: row.get("id") == log_id and row.get("user_id") == current_user.id,
+        predicate=lambda row: _same_id(row.get("id"), log_id) and _same_id(row.get("user_id"), current_user.id),
     )
 
     if not perf_log:
@@ -249,13 +263,13 @@ async def get_player_performance_logs(
     skip: int = 0,
     limit: int = 20,
 ):
-    player = first_doc(COLL.users, predicate=lambda row: row.get("id") == player_id)
+    player = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, player_id))
     if not player:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player not found")
 
     logs = list_docs(
         COLL.performance_logs,
-        predicate=lambda row: row.get("user_id") == player_id,
+        predicate=lambda row: _matches_log_user(row, player_id),
         sort_key="match_date",
         reverse=True,
         offset=skip,
@@ -267,7 +281,7 @@ async def get_player_performance_logs(
 
 @router.get("/stats/{player_id}")
 async def get_player_stats(player_id: Union[int, str]):
-    player = first_doc(COLL.users, predicate=lambda row: row.get("id") == player_id)
+    player = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, player_id))
 
     if not player:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player not found")
@@ -287,14 +301,14 @@ async def get_player_stats(player_id: Union[int, str]):
 
 @router.get("/ai-insights/{player_id}")
 async def get_player_ai_insights(player_id: Union[int, str]):
-    player = first_doc(COLL.users, predicate=lambda row: row.get("id") == player_id)
+    player = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, player_id))
 
     if not player:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player not found")
 
     logs = list_docs(
         COLL.performance_logs,
-        predicate=lambda row: row.get("user_id") == player_id,
+        predicate=lambda row: _matches_log_user(row, player_id),
         sort_key="match_date",
         reverse=True,
         limit=10,

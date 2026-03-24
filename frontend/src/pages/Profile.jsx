@@ -44,27 +44,39 @@ export function ProfilePage() {
   const fetchData = async () => {
     try {
       const currentUser = JSON.parse(localStorage.getItem('user'));
-      const profileId = playerId || currentUser?.id;
+      let profileId = playerId || currentUser?.id;
       const isOwn = !playerId || String(playerId) === String(currentUser?.id);
       setIsOwnProfile(isOwn);
 
-      const requests = [
-        playerService.getPlayer(profileId),
-        performanceService.getPlayerStats(profileId),
-        performanceService.getPlayerLogs(profileId),
-        performanceService.getAiInsights(profileId),
-      ];
+      let playerRes;
+      let statsRes;
+      let logsRes;
+      let aiRes;
+      let chatRes;
 
       if (isOwn) {
-        requests.push(adminService.getMyChat());
-      }
+        // Always resolve own profile from backend identity instead of localStorage id.
+        playerRes = await playerService.getCurrentPlayer();
+        if (playerRes?.data?.id !== undefined && playerRes?.data?.id !== null) {
+          profileId = playerRes.data.id;
+          localStorage.setItem('user', JSON.stringify(playerRes.data));
+          window.dispatchEvent(new Event('authchange'));
+        }
 
-      const responses = await Promise.all(requests);
-      const playerRes = responses[0];
-      const statsRes = responses[1];
-      const logsRes = responses[2];
-      const aiRes = responses[3];
-      const chatRes = responses[4];
+        [statsRes, logsRes, aiRes, chatRes] = await Promise.all([
+          performanceService.getPlayerStats(profileId),
+          performanceService.getPlayerLogs(profileId),
+          performanceService.getAiInsights(profileId),
+          adminService.getMyChat(),
+        ]);
+      } else {
+        [playerRes, statsRes, logsRes, aiRes] = await Promise.all([
+          playerService.getPlayer(profileId),
+          performanceService.getPlayerStats(profileId),
+          performanceService.getPlayerLogs(profileId),
+          performanceService.getAiInsights(profileId),
+        ]);
+      }
 
       setUser(playerRes.data);
       setStats(statsRes.data);
