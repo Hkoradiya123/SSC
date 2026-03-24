@@ -14,7 +14,10 @@ import {
   isFirebaseConfigured,
 } from './firebase';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const runtimeEnv =
+  typeof window !== 'undefined' && window.__ENV__ ? window.__ENV__ : {};
+
+const API_URL = import.meta.env.VITE_API_URL || runtimeEnv.VITE_API_URL || 'http://localhost:8000';
 
 // Set up axios instance
 const api = axios.create({
