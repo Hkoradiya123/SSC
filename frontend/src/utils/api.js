@@ -17,7 +17,33 @@ import {
 const runtimeEnv =
   typeof window !== 'undefined' && window.__ENV__ ? window.__ENV__ : {};
 
-const API_URL = import.meta.env.VITE_API_URL || runtimeEnv.VITE_API_URL || 'http://localhost:8000';
+const normalizeApiUrl = (candidate) => {
+  const value = (candidate || '').trim();
+  if (!value) {
+    return '/api';
+  }
+
+  if (typeof window !== 'undefined') {
+    const isHttpsPage = window.location.protocol === 'https:';
+    const isLocalHostTarget = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(value);
+    const isRelative = value.startsWith('/');
+
+    // On hosted HTTPS deployments (like HF Space), avoid mixed-content localhost API URLs.
+    if (isHttpsPage && isLocalHostTarget) {
+      return '/api';
+    }
+
+    if (isRelative) {
+      return value;
+    }
+  }
+
+  return value;
+};
+
+const API_URL = normalizeApiUrl(
+  runtimeEnv.VITE_API_URL || import.meta.env.VITE_API_URL || '/api'
+);
 
 // Set up axios instance
 const api = axios.create({

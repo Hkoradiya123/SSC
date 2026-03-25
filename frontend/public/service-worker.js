@@ -50,6 +50,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Always use network for API calls to avoid stale cached dashboard/auth responses.
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(request).catch(() => {
+        return new Response(
+          JSON.stringify({
+            detail: 'Backend is unreachable. Please check your network and server status.',
+            offline: true
+          }),
+          {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      })
+    );
+    return;
+  }
+
   // Skip cross-origin requests and non-GET requests
   if (url.origin !== location.origin || request.method !== 'GET') {
     return;
@@ -70,9 +90,8 @@ self.addEventListener('fetch', (event) => {
         // Clone the response
         const responseToCache = response.clone();
 
-        // Cache successful GET requests for API endpoints and assets
+        // Cache successful GET requests for static assets only.
         if (
-          request.url.includes('/api/') ||
           request.url.match(/\.(js|css|png|jpg|jpeg|svg|gif|woff|woff2)$/)
         ) {
           caches.open(CACHE_NAME).then((cache) => {
