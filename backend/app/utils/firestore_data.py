@@ -5,11 +5,14 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, Callable
 
+import certifi
 from bson import ObjectId
 from pymongo import MongoClient, ReturnDocument
 from pymongo.collection import Collection
+from pymongo.errors import PyMongoError
 
 from app.config import settings
+from app.utils.logger import logger
 
 
 @dataclass
@@ -31,6 +34,10 @@ COLL = CollectionNames()
 _mongo_client: MongoClient | None = None
 
 
+class DatabaseUnavailableError(RuntimeError):
+    """Raised when MongoDB is not configured or temporarily unavailable."""
+
+
 def _mongo_db_name() -> str:
     return settings.MONGODB_DB_NAME or "ssc"
 
@@ -42,9 +49,26 @@ def _client() -> MongoClient:
         return _mongo_client
 
     if not settings.MONGODB_URI:
-        raise RuntimeError("MONGODB_URI is not configured")
+        raise DatabaseUnavailableError("MONGODB_URI is not configured")
 
-    _mongo_client = MongoClient(settings.MONGODB_URI, tz_aware=True)
+    try:
+        _mongo_client = MongoClient(
+            settings.MONGODB_URI,
+            tz_aware=True,
+            tlsCAFile=certifi.where(),
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=10000,
+            socketTimeoutMS=20000,
+        )
+        # Force an early connectivity check so failures surface clearly in API responses.
+        _mongo_client.admin.command("ping")
+    except PyMongoError as exc:
+        _mongo_client = None
+        logger.error(f"MongoDB connectivity check failed | Details: {str(exc)}")
+        raise DatabaseUnavailableError(
+            "Unable to connect to MongoDB. Verify MONGODB_URI and Atlas network access (allow Hugging Face egress IPs or 0.0.0.0/0)."
+        ) from exc
+
     return _mongo_client
 
 

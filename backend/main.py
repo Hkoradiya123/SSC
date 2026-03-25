@@ -1,9 +1,12 @@
 from fastapi import FastAPI
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
 from app.config import settings
 from app.middleware import LoggingMiddleware, RateLimitMiddleware
 from app.middleware.auth import security
+from app.utils.firestore_data import DatabaseUnavailableError
 from app.routes import (
     auth_router,
     players_router,
@@ -88,6 +91,14 @@ def custom_openapi():
 
 
 app.openapi = custom_openapi
+
+
+@app.exception_handler(DatabaseUnavailableError)
+async def database_unavailable_handler(request: Request, exc: DatabaseUnavailableError):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": str(exc)},
+    )
 
 
 if __name__ == "__main__":
