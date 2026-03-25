@@ -9,8 +9,10 @@ export function DashboardPage() {
   const [topStats, setTopStats] = useState(null);
   const [chartData, setChartData] = useState({ top_players_runs: [], recent_match_trend: [] });
   const [teamInsights, setTeamInsights] = useState(null);
+  const [aiRefreshing, setAiRefreshing] = useState(false);
   const [funds, setFunds] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -62,6 +64,10 @@ export function DashboardPage() {
           }),
           notificationService.getMine().catch(err => {
             console.error('❌ getMine notifications failed:', err.response?.status, err.response?.data);
+            if (err.response?.status === 401 || err.response?.status === 403) {
+              // Notifications are non-critical; keep dashboard usable if auth is temporarily missing.
+              return { data: [] };
+            }
             throw err;
           }),
         ]);
@@ -105,6 +111,68 @@ export function DashboardPage() {
       // Ignore user-side marking errors to keep dashboard responsive.
     }
   };
+
+  const removeReadNotification = async (id) => {
+    try {
+      await notificationService.removeRead(id);
+      setNotifications((prev) => prev.filter((item) => item.id !== id));
+    } catch {
+      // Keep UI stable on deletion errors.
+    }
+  };
+
+  const clearAllReadNotifications = async () => {
+    try {
+      await notificationService.clearAllRead();
+      setNotifications((prev) => prev.filter((item) => !item.is_read));
+    } catch {
+      // Keep UI stable on bulk-clear errors.
+    }
+  };
+
+  const visibleNotifications = showAllNotifications
+    ? notifications
+    : notifications.slice(0, 2);
+  const unreadCount = notifications.filter((item) => !item.is_read).length;
+  const readCount = notifications.length - unreadCount;
+
+  const refreshAiSummary = async () => {
+    try {
+      setAiRefreshing(true);
+      const teamInsightsRes = await dashboardService.getTeamInsights(true);
+      setTeamInsights(teamInsightsRes.data || null);
+    } catch (err) {
+      console.error('❌ refresh AI team pulse failed:', err.response?.status, err.response?.data || err.message);
+    } finally {
+      setAiRefreshing(false);
+    }
+  };
+
+  const pulseLines = (() => {
+    if (typeof teamInsights?.pulse !== 'string') {
+      return [];
+    }
+
+    const cleaned = teamInsights.pulse
+      .replace(/\*\*/g, '')
+      .replace(/^[#\-\s]+/gm, '')
+      .replace(/\r/g, '')
+      .trim();
+
+    const fromNewLines = cleaned
+      .split('\n')
+      .map((line) => line.replace(/^\d+[).:-]?\s*/, '').trim())
+      .filter(Boolean);
+
+    const lines = fromNewLines.length > 1
+      ? fromNewLines
+      : cleaned
+          .split(/(?<=[.!?])\s+(?=[A-Z])/)
+          .map((line) => line.replace(/^\d+[).:-]?\s*/, '').trim())
+          .filter(Boolean);
+
+    return lines.slice(0, 6);
+  })();
 
   return (
     <div className={styles.dashboard}>
@@ -190,15 +258,33 @@ export function DashboardPage() {
           </section>
 
           <section className={styles.panel}>
-            <h2>AI Team Performance Pulse</h2>
+            <div className={styles.aiPanelHeader}>
+              <h2>AI Team Performance Pulse</h2>
+              <button
+                type="button"
+                className={styles.aiRefreshBtn}
+                onClick={refreshAiSummary}
+                disabled={aiRefreshing}
+              >
+                {aiRefreshing ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
             {teamInsights ? (
               <>
                 <div className={styles.insightHeadline}>
-                  <span>Form: {teamInsights.team_form}</span>
-                  <strong>Confidence {teamInsights.confidence_score}%</strong>
+                  <span>
+                    {teamInsights.team_name
+                      ? `${teamInsights.team_name} (${teamInsights.total_players || 0} players)`
+                      : `Form: ${teamInsights.team_form || 'N/A'}`}
+                  </span>
+                  <strong>
+                    {typeof teamInsights.confidence_score === 'number'
+                      ? `Confidence ${teamInsights.confidence_score}%`
+                      : 'Groq AI'}
+                  </strong>
                 </div>
                 <ul className={styles.insightsList}>
-                  {(teamInsights.insights || []).map((item, idx) => (
+                  {(pulseLines.length > 0 ? pulseLines : (teamInsights.insights || [])).map((item, idx) => (
                     <li key={idx}>{item}</li>
                   ))}
                 </ul>
@@ -255,13 +341,33 @@ export function DashboardPage() {
         <section className={styles.section}>
           <div className={styles.sectionHeader}>
             <h2>Notifications</h2>
-            <span>{notifications.filter((item) => !item.is_read).length} unread</span>
+            <div className={styles.sectionHeaderActions}>
+              <span>{unreadCount} unread</span>
+              {readCount > 0 && (
+                <button
+                  type="button"
+                  className={styles.clearReadBtn}
+                  onClick={clearAllReadNotifications}
+                >
+                  Clear All Read
+                </button>
+              )}
+              {notifications.length > 2 && (
+                <button
+                  type="button"
+                  className={styles.inlineActionBtn}
+                  onClick={() => setShowAllNotifications((prev) => !prev)}
+                >
+                  {showAllNotifications ? 'Show Latest 2' : 'Show All'}
+                </button>
+              )}
+            </div>
           </div>
           <div className={styles.notificationList}>
             {notifications.length === 0 ? (
               <p className={styles.empty}>No notifications yet.</p>
             ) : (
-              notifications.slice(0, 6).map((item) => (
+              visibleNotifications.map((item) => (
                 <div key={item.id} className={`${styles.noticeItem} ${item.is_read ? styles.noticeRead : ''}`}>
                   <div>
                     <h4>{item.title}</h4>
@@ -271,6 +377,17 @@ export function DashboardPage() {
                   {!item.is_read && (
                     <button onClick={() => markNotificationRead(item.id)}>
                       Mark Read
+                    </button>
+                  )}
+                  {item.is_read && (
+                    <button
+                      type="button"
+                      className={styles.deleteNoticeBtn}
+                      onClick={() => removeReadNotification(item.id)}
+                      aria-label="Remove read notification"
+                      title="Remove"
+                    >
+                      ×
                     </button>
                   )}
                 </div>

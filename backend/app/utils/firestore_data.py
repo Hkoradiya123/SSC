@@ -17,6 +17,7 @@ class CollectionNames:
     users: str = "users"
     payments: str = "payments"
     performance_logs: str = "performance_logs"
+    ai_summaries: str = "ai_summaries"
     notifications: str = "notifications"
     finance_transactions: str = "finance_transactions"
     admin_chat_messages: str = "admin_chat_messages"

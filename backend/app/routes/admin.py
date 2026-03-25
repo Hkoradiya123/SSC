@@ -1,14 +1,36 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from datetime import datetime, timedelta
-from typing import List
+from datetime import datetime, timedelta, timezone
+from typing import List, Union
 
 from app.config import settings
 from app.schemas import AdminChatCreate, AdminChatResponse
 from app.middleware.auth import get_admin_user, get_current_user
-from app.utils.firestore_data import COLL, as_obj, create_doc, first_doc, list_docs, now_utc, update_doc
+from app.utils.auth import hash_password
+from app.utils.firestore_data import COLL, _parse_datetime, as_obj, create_doc, delete_doc, first_doc, list_docs, now_utc, update_doc
 from app.utils.logger import log_action
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+def _same_id(left, right) -> bool:
+    if left is None or right is None:
+        return False
+    return str(left) == str(right)
+
+
+def _matches_user_identity(row: dict, value: Union[int, str]) -> bool:
+    return _same_id(row.get("id"), value) or _same_id(row.get("uid"), value)
+
+
+def _sort_ts(value) -> float:
+    if value is None:
+        return float("-inf")
+    dt = _parse_datetime(value) if isinstance(value, str) else value
+    if isinstance(dt, datetime):
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    return float("-inf")
 
 
 @router.get("/users", response_model=List)
@@ -33,8 +55,8 @@ async def list_all_users(skip: int = 0, limit: int = 100, admin=Depends(get_admi
 
 
 @router.put("/users/{user_id}/premium")
-async def toggle_user_premium(user_id: int, days: int = 30, admin=Depends(get_admin_user)):
-    user = first_doc(COLL.users, predicate=lambda row: row.get("id") == user_id)
+async def toggle_user_premium(user_id: Union[int, str], days: int = 30, admin=Depends(get_admin_user)):
+    user = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, user_id))
 
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -49,24 +71,106 @@ async def toggle_user_premium(user_id: int, days: int = 30, admin=Depends(get_ad
     else:
         patch["premium_expiry"] = None
 
-    update_doc(COLL.users, user_id, patch)
+    update_doc(COLL.users, user.get("_doc_id") or user.get("id"), patch)
     log_action("Admin toggled user premium", user_id=admin.id, details=f"User {user_id}")
 
     return {"message": "User premium status updated"}
 
 
 @router.delete("/users/{user_id}")
-async def deactivate_user(user_id: int, admin=Depends(get_admin_user)):
-    user = first_doc(COLL.users, predicate=lambda row: row.get("id") == user_id)
+async def deactivate_user(user_id: Union[int, str], admin=Depends(get_admin_user)):
+    user = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, user_id))
 
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    update_doc(COLL.users, user_id, {"is_active": False, "updated_at": now_utc()})
+    if _same_id(user.get("id"), admin.id):
+        raise HTTPException(status_code=400, detail="You cannot deactivate your own admin account")
+
+    update_doc(COLL.users, user.get("_doc_id") or user.get("id"), {"is_active": False, "updated_at": now_utc()})
 
     log_action("Admin deactivated user", user_id=admin.id, details=f"User {user_id}")
 
     return {"message": "User deactivated successfully"}
+
+
+@router.post("/users/{user_id}/activate")
+async def activate_user(user_id: Union[int, str], admin=Depends(get_admin_user)):
+    user = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, user_id))
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    update_doc(COLL.users, user.get("_doc_id") or user.get("id"), {"is_active": True, "updated_at": now_utc()})
+
+    log_action("Admin activated user", user_id=admin.id, details=f"User {user_id}")
+    return {"message": "User activated successfully"}
+
+
+@router.put("/users/{user_id}/role")
+async def update_user_role(user_id: Union[int, str], role: str, admin=Depends(get_admin_user)):
+    normalized_role = (role or "").strip().lower()
+    if normalized_role not in {"admin", "player"}:
+        raise HTTPException(status_code=400, detail="Role must be either 'admin' or 'player'")
+
+    user = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, user_id))
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if _same_id(user.get("id"), admin.id) and normalized_role != "admin":
+        raise HTTPException(status_code=400, detail="You cannot remove your own admin role")
+
+    update_doc(
+        COLL.users,
+        user.get("_doc_id") or user.get("id"),
+        {"role": normalized_role, "updated_at": now_utc()},
+    )
+
+    log_action("Admin updated user role", user_id=admin.id, details=f"User {user_id} -> {normalized_role}")
+    return {"message": "User role updated successfully"}
+
+
+@router.delete("/users/{user_id}/hard-delete")
+async def hard_delete_user(user_id: Union[int, str], admin=Depends(get_admin_user)):
+    user = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, user_id))
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if _same_id(user.get("id"), admin.id):
+        raise HTTPException(status_code=400, detail="You cannot delete your own admin account")
+
+    effective_user_ids = {str(user.get("id")), str(user.get("uid"))}
+    chats = list_docs(COLL.admin_chat_messages, limit=5000)
+    for message in chats:
+        if str(message.get("user_id")) in effective_user_ids:
+            delete_doc(COLL.admin_chat_messages, message.get("id"))
+
+    delete_doc(COLL.users, user.get("_doc_id") or user.get("id"))
+
+    log_action("Admin hard deleted user", user_id=admin.id, details=f"User {user_id}")
+    return {"message": "User deleted permanently"}
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(user_id: Union[int, str], admin=Depends(get_admin_user)):
+    user = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, user_id))
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    temporary_password = "123456"
+    update_doc(
+        COLL.users,
+        user.get("_doc_id") or user.get("id"),
+        {
+            "password": hash_password(temporary_password),
+            "updated_at": now_utc(),
+        },
+    )
+
+    log_action("Admin reset user password", user_id=admin.id, details=f"User {user_id}")
+    return {"message": "Password reset to 123456"}
 
 
 @router.get("/stats")
@@ -120,15 +224,21 @@ async def get_chat_threads(admin=Depends(get_admin_user)):
 
     threads = []
     for player in players:
-        player_messages = [m for m in chats if m.get("user_id") == player.get("id")]
+        player_messages = [
+            m
+            for m in chats
+            if _same_id(m.get("user_id"), player.get("id")) or _same_id(m.get("user_id"), player.get("uid"))
+        ]
         last_message = player_messages[0] if player_messages else None
         unread_count = len(
             [m for m in player_messages if m.get("sender_role") == "player" and not m.get("is_read", False)]
         )
 
+        thread_user_id = player.get("uid") or player.get("id")
+
         threads.append(
             {
-                "user_id": player.get("id"),
+                "user_id": thread_user_id,
                 "name": player.get("name"),
                 "email": player.get("email"),
                 "unread_count": unread_count,
@@ -137,19 +247,24 @@ async def get_chat_threads(admin=Depends(get_admin_user)):
             }
         )
 
-    threads.sort(key=lambda item: item["last_message_at"] or datetime.min, reverse=True)
+    threads.sort(key=lambda item: _sort_ts(item.get("last_message_at")), reverse=True)
     return threads
 
 
 @router.get("/chats/{user_id}", response_model=list[AdminChatResponse])
-async def get_chat_thread(user_id: int, admin=Depends(get_admin_user)):
-    user = first_doc(COLL.users, predicate=lambda row: row.get("id") == user_id and row.get("role") == "player")
+async def get_chat_thread(user_id: Union[int, str], admin=Depends(get_admin_user)):
+    user = first_doc(
+        COLL.users,
+        predicate=lambda row: _matches_user_identity(row, user_id) and row.get("role") == "player",
+    )
     if not user:
         raise HTTPException(status_code=404, detail="Player not found")
 
+    effective_user_id = user.get("uid") or user.get("id")
+
     messages = list_docs(
         COLL.admin_chat_messages,
-        predicate=lambda row: row.get("user_id") == user_id,
+        predicate=lambda row: _same_id(row.get("user_id"), effective_user_id) or _same_id(row.get("user_id"), user.get("id")),
         sort_key="created_at",
         reverse=False,
     )
@@ -163,10 +278,15 @@ async def get_chat_thread(user_id: int, admin=Depends(get_admin_user)):
 
 
 @router.post("/chats/{user_id}", response_model=AdminChatResponse)
-async def send_admin_chat_message(user_id: int, payload: AdminChatCreate, admin=Depends(get_admin_user)):
-    user = first_doc(COLL.users, predicate=lambda row: row.get("id") == user_id and row.get("role") == "player")
+async def send_admin_chat_message(user_id: Union[int, str], payload: AdminChatCreate, admin=Depends(get_admin_user)):
+    user = first_doc(
+        COLL.users,
+        predicate=lambda row: _matches_user_identity(row, user_id) and row.get("role") == "player",
+    )
     if not user:
         raise HTTPException(status_code=404, detail="Player not found")
+
+    effective_user_id = user.get("uid") or user.get("id")
 
     message = payload.message.strip()
     if not message:
@@ -175,7 +295,7 @@ async def send_admin_chat_message(user_id: int, payload: AdminChatCreate, admin=
     chat = create_doc(
         COLL.admin_chat_messages,
         {
-            "user_id": user_id,
+            "user_id": effective_user_id,
             "sender_role": "admin",
             "message": message,
             "is_read": False,

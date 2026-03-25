@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../utils/api';
 import styles from './auth.module.css';
@@ -11,22 +11,9 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const completeSocialLogin = async () => {
-      try {
-        const res = await authService.completeSocialLogin();
-        if (res?.data?.access_token && res?.data?.user) {
-          navigate('/dashboard');
-        }
-      } catch (_err) {
-        // Ignore silent social callback check failures
-      }
-    };
-    completeSocialLogin();
-  }, [navigate]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
+    sessionStorage.removeItem('suppressSocialAutoLogin');
     setError('');
     setMessage('');
     setLoading(true);
@@ -68,6 +55,7 @@ export function LoginPage() {
   };
 
   const handleGoogleLogin = async () => {
+    sessionStorage.removeItem('suppressSocialAutoLogin');
     setError('');
     setMessage('');
     setLoading(true);
@@ -135,6 +123,7 @@ export function RegisterPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    sessionStorage.removeItem('suppressSocialAutoLogin');
     setError('');
     setMessage('');
     setLoading(true);

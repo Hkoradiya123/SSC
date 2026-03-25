@@ -9,7 +9,14 @@ from app.schemas.user import (
     PremiumResponse,
 )
 from app.schemas.payment import PaymentRequest, PaymentResponse
-from app.schemas.performance import PerformanceLogCreate, PerformanceLogUpdate, PerformanceLogResponse
+from app.schemas.performance import (
+    PerformanceLogCreate,
+    PerformanceLogUpdate,
+    PerformanceLogResponse,
+    PlayerInsightsResponse,
+    TeamPerformancePulseResponse,
+    MatchAnalysisResponse,
+)
 from app.schemas.notification import NotificationResponse
 from app.schemas.finance import GuestFundRequest, ManualCreditRequest, FinanceTransactionResponse
 from app.schemas.chat import AdminChatCreate, AdminChatResponse
@@ -39,6 +46,9 @@ __all__ = [
     "PerformanceLogCreate",
     "PerformanceLogUpdate",
     "PerformanceLogResponse",
+    "PlayerInsightsResponse",
+    "TeamPerformancePulseResponse",
+    "MatchAnalysisResponse",
     "NotificationResponse",
     "GuestFundRequest",
     "ManualCreditRequest",

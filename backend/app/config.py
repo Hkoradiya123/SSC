@@ -80,6 +80,10 @@ class Settings(BaseSettings):
         "",
     )
 
+    # Groq AI Integration
+    GROQ_API_KEY: str = env_first(["GROQ_API_KEY", "GROQAPIKEY"], "")
+    GROQ_MODEL: str = env_first(["GROQ_MODEL", "GROQMODEL"], "mixtral-8x7b-32768")
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]

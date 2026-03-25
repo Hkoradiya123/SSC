@@ -27,9 +27,14 @@ const api = axios.create({
   }
 });
 
+let logoutInProgress = false;
+
 const clearClientAuthState = () => {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  if (api?.defaults?.headers?.common?.Authorization) {
+    delete api.defaults.headers.common.Authorization;
+  }
   window.dispatchEvent(new Event('authchange'));
 };
 
@@ -65,16 +70,15 @@ const getFirebaseAuthErrorMessage = (error, fallbackMessage) => {
 };
 
 // Add token to requests
-api.interceptors.request.use(async (config) => {
-  let token = localStorage.getItem('token');
-
-  if (isFirebaseConfigured && firebaseAuth?.currentUser) {
-    const firebaseToken = await firebaseAuth.currentUser.getIdToken();
-    if (firebaseToken) {
-      token = firebaseToken;
-      localStorage.setItem('token', firebaseToken);
+api.interceptors.request.use((config) => {
+  if (logoutInProgress) {
+    if (config?.headers?.Authorization) {
+      delete config.headers.Authorization;
     }
+    return config;
   }
+
+  const token = localStorage.getItem('token');
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -88,7 +92,7 @@ api.interceptors.response.use(
     const originalRequest = error.config || {};
     const status = error?.response?.status;
 
-    if (status === 401 && !originalRequest._retry) {
+    if (status === 401 && !originalRequest._retry && !logoutInProgress) {
       originalRequest._retry = true;
 
       if (isFirebaseConfigured && firebaseAuth?.currentUser) {
@@ -123,6 +127,9 @@ api.interceptors.response.use(
 );
 
 const hydrateLocalUserFromBackend = async (accessToken) => {
+  logoutInProgress = false;
+  sessionStorage.removeItem('suppressSocialAutoLogin');
+
   if (accessToken) {
     localStorage.setItem('token', accessToken);
   }
@@ -271,12 +278,23 @@ export const authService = {
   },
 
   logout: async () => {
+    logoutInProgress = true;
+    sessionStorage.setItem('suppressSocialAutoLogin', '1');
+    clearClientAuthState();
+
     if (isFirebaseConfigured && firebaseAuth) {
-      await signOut(firebaseAuth);
+      // Do not block UI logout on remote Firebase sign-out latency.
+      signOut(firebaseAuth)
+        .catch(() => {
+          // Ignore remote sign-out failures; local logout is already complete.
+        })
+        .finally(() => {
+          logoutInProgress = false;
+        });
+      return;
     }
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.dispatchEvent(new Event('authchange'));
+
+    logoutInProgress = false;
   },
 };
 
@@ -313,7 +331,8 @@ export const performanceService = {
   getPlayerLogs: (playerId, skip = 0, limit = 20) =>
     api.get(`/performance/player/${playerId}?skip=${skip}&limit=${limit}`),
   getPlayerStats: (playerId) => api.get(`/performance/stats/${playerId}`),
-  getAiInsights: (playerId) => api.get(`/performance/ai-insights/${playerId}`),
+  getAiInsights: (playerId, forceRefresh = false) =>
+    api.get(`/performance/ai-insights/player/${playerId}${forceRefresh ? '?force_refresh=true' : ''}`),
 };
 
 export const dashboardService = {
@@ -323,7 +342,7 @@ export const dashboardService = {
   getRecentPlayers: () => api.get('/dashboard/recent-players'),
   getTopStats: () => api.get('/dashboard/top-stats'),
   getCharts: () => api.get('/dashboard/charts'),
-  getTeamInsights: () => api.get('/dashboard/team-ai-insights'),
+  getTeamInsights: (forceRefresh = false) => api.get(`/performance/ai-insights/team-pulse${forceRefresh ? '?force_refresh=true' : ''}`),
   getFundsSummary: () => api.get('/dashboard/funds-summary'),
 };
 
@@ -333,6 +352,10 @@ export const adminService = {
   toggleUserPremium: (userId, days = 30) =>
     api.put(`/admin/users/${userId}/premium?days=${days}`),
   deactivateUser: (userId) => api.delete(`/admin/users/${userId}`),
+  activateUser: (userId) => api.post(`/admin/users/${userId}/activate`),
+  updateUserRole: (userId, role) => api.put(`/admin/users/${userId}/role?role=${role}`),
+  resetUserPassword: (userId) => api.post(`/admin/users/${userId}/reset-password`),
+  hardDeleteUser: (userId) => api.delete(`/admin/users/${userId}/hard-delete`),
   getSystemStats: () => api.get('/admin/stats'),
   getChatThreads: () => api.get('/admin/chats'),
   getChatThread: (userId) => api.get(`/admin/chats/${userId}`),
@@ -347,6 +370,8 @@ export const notificationService = {
   checkExpiry: () => api.post('/notifications/check-expiry'),
   markRead: (id) => api.put(`/notifications/${id}/read`),
   markAllRead: () => api.put('/notifications/read-all'),
+  removeRead: (id) => api.delete(`/notifications/${id}`),
+  clearAllRead: () => api.delete('/notifications/clear-read'),
 };
 
 export const financeService = {

@@ -1,5 +1,5 @@
 .navbar {
-  background: linear-gradient(110deg, rgba(18, 58, 53, 0.8  ), rgba(22, 73, 66, 0.8));
+  background: linear-gradient(110deg, rgba(18, 58, 53, 0.8), rgba(22, 73, 66, 0.8));
   color: white;
   padding: 13px 0;
   position: sticky;
@@ -26,7 +26,9 @@
   color: white;
   display: flex;
   align-items: center;
-  gap: 8px;
+}
+.logo:hover{
+  text-decoration: none;
 }
 
 .navlinks {
@@ -35,19 +37,28 @@
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
+   /* transform: translateY(-1px); */
 }
 
-.navlinks a {
+.navLink {
   color: white;
   text-decoration: none;
-  transition: opacity 0.3s, transform 0.25s;
+  transition: opacity 0.3s, transform 0.25s, color 0.25s;
   font-weight: 600;
-  padding: 3px 0;
+  padding: 6px 2px;
+  border-bottom: 2px solid transparent;
 }
 
-.navlinks a:hover {
+.navLink:hover {
   opacity: 0.85;
   transform: translateY(-1px);
+  color: #ffd700;
+  text-decoration: none;
+}
+
+.active {
+  color: #ffd700;
+  border-bottom-color: #ffd700;
 }
 
 .register {
@@ -64,12 +75,17 @@
   display: inline-block !important;
   line-height: 1.2 !important;
   vertical-align: middle !important;
+  border-bottom: 2px solid transparent;
 }
 
 .register:hover {
   background-color: #ff8c00;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(255, 165, 0, 0.4);
+}
+
+.activeRegister {
+  border-bottom-color: #333;
 }
 
 .logout {
@@ -81,7 +97,13 @@
 }
 
 .logout:hover {
-  background-color: #d8f0ea;
+  background-color: #bacec9;
+  transform: translateY(-1px);
+}
+
+.logout:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 @media (max-width: 820px) {

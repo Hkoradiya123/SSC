@@ -34,6 +34,38 @@
   color: #5f6368;
 }
 
+.aiPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.aiPanelHeader h2 {
+  margin-bottom: 0;
+}
+
+.aiRefreshBtn {
+  border: 1px solid #9ecfc4;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #136a56;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.aiRefreshBtn:hover:not(:disabled) {
+  background: #f3fbf8;
+}
+
+.aiRefreshBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .error {
   background-color: #fee8e8;
   color: #d32f2f;
@@ -284,6 +316,42 @@
   font-weight: 700;
 }
 
+.sectionHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inlineActionBtn {
+  border: 1px solid #9fd0c5;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #136a56;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.inlineActionBtn:hover {
+  background: #f3fbf8;
+}
+
+.clearReadBtn {
+  border: 1px solid #e2c4c4;
+  border-radius: 999px;
+  background: #fff;
+  color: #8e2f2f;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.clearReadBtn:hover {
+  background: #fff6f6;
+}
+
 .playersList {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -410,6 +478,26 @@
   padding: 8px 10px;
   height: fit-content;
   font-weight: 600;
+}
+
+.deleteNoticeBtn {
+  align-self: flex-start;
+  border: 1px solid #dfdede !important;
+  background: #fff !important;
+  color: #8b3a3a !important;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px !important;
+  padding: 0 !important;
+  line-height: 1;
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deleteNoticeBtn:hover {
+  background: #fff1f1 !important;
 }
 
 .empty {

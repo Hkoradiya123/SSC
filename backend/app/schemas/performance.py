@@ -37,3 +37,26 @@ class PerformanceLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PlayerInsightsResponse(BaseModel):
+    """AI-generated insights for individual player performance."""
+    player_name: str
+    insights: str
+    matches_analyzed: int
+    timestamp: datetime
+
+
+class TeamPerformancePulseResponse(BaseModel):
+    """AI-generated team performance analysis."""
+    team_name: str
+    pulse: str
+    total_players: int
+    timestamp: datetime
+
+
+class MatchAnalysisResponse(BaseModel):
+    """AI-generated match analysis."""
+    match_id: Optional[str] = None
+    analysis: str
+    analysis_date: datetime
