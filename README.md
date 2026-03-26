@@ -1,17 +1,30 @@
 ---
 title: SSC
-emoji: 📉
+emoji: 🏏
 colorFrom: purple
 colorTo: yellow
 sdk: docker
 pinned: false
 license: mit
-short_description: SculptSoft Cricketers
+short_description: SSC – A full-stack cricket player management & performance tracking platform with a freemium subscription model.
 ---
 
 # SSC - Sculpt Soft Cricketers
 
-A complete web-based player management and performance tracking system for cricket players. Built with FastAPI backend and React frontend, featuring a freemium subscription model.
+## 📖 Description
+
+**SSC (Sculpt Soft Cricketers)** is a full-stack web application designed to manage cricket players and track their performance. It provides a centralised platform where players can register, maintain detailed profiles, log match performances, compete on leaderboards, and optionally upgrade to a **Premium** membership for enhanced visibility and analytics.
+
+The project is built with a **FastAPI** (Python) backend and a **React** (JavaScript/Vite) frontend. Data is persisted in **SQLite** (via SQLAlchemy ORM) for self-hosted deployments and optionally in **MongoDB / Firebase Firestore** for cloud deployments. Authentication is handled using JWT tokens with bcrypt password hashing.
+
+### Key Highlights
+- 🏏 **Player Profiles** – Register, authenticate, and manage cricket player data (runs, wickets, matches).
+- 📊 **Performance Tracking** – Log match-by-match stats including runs scored, wickets taken, and ratings.
+- 🏆 **Leaderboards** – Real-time rankings for top scorers and wicket-takers.
+- 💎 **Freemium Model** – Premium membership (₹1,000 / month) unlocks featured placement, advanced analytics, and priority notifications.
+- 🔔 **Notification System** – Alerts for premium expiry, achievements, and system events.
+- 🛡️ **Admin Panel** – Manage users, toggle premium status, view system statistics.
+- 🐳 **Docker-ready** – Includes development and production Docker Compose configs, plus a Hugging Face Spaces deployment option.
 
 ## 🎯 Features
 
