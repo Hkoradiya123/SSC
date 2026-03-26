@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from datetime import datetime, timedelta
+from datetime import datetime
 from app.schemas import PremiumUpgradeRequest, PremiumResponse, PaymentResponse
 from app.middleware.auth import get_current_user
 from app.utils.firestore_data import COLL, as_obj, create_doc, first_doc, list_docs, now_utc, update_doc, _parse_datetime
-from app.utils.logger import log_action, log_error
-import uuid
+from app.utils.logger import log_action
 
 router = APIRouter(prefix="/premium", tags=["Premium"])
 
@@ -14,71 +13,44 @@ async def upgrade_to_premium_plan(
     request_data: PremiumUpgradeRequest,
     current_user=Depends(get_current_user),
 ):
-    """Upgrade player to premium membership"""
+    """Create premium request for admin approval."""
     
     user = first_doc(COLL.users, predicate=lambda row: row.get("id") == current_user.id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     if user.get("is_premium"):
-        # Extend premium period
-        current_expiry = user.get("premium_expiry", now_utc())
-        if isinstance(current_expiry, str):
-            current_expiry = _parse_datetime(current_expiry) or now_utc()
-        new_expiry = current_expiry + timedelta(days=request_data.plan_days)
-        user = update_doc(
-            COLL.users,
-            user["id"],
-            {"premium_expiry": new_expiry, "updated_at": now_utc()},
-        ) or user
-    else:
-        # New premium membership
-        user = update_doc(
-            COLL.users,
-            user["id"],
-            {
-                "is_premium": True,
-                "premium_start_date": now_utc(),
-                "premium_expiry": now_utc() + timedelta(days=request_data.plan_days),
-                "updated_at": now_utc(),
-            },
-        ) or user
-    
-    # Create payment record
-    transaction_id = str(uuid.uuid4())
+        raise HTTPException(status_code=400, detail="You are already a premium member")
+
+    latest_request = first_doc(
+        COLL.admin_chat_messages,
+        predicate=lambda row: row.get("sender_role") == "player"
+        and str(row.get("user_id")) == str(current_user.id)
+        and str(row.get("message", "")).startswith("PREMIUM_UPGRADE_REQUEST"),
+        sort_key="created_at",
+        reverse=True,
+    )
+
+    if latest_request and not latest_request.get("is_read", False):
+        raise HTTPException(status_code=400, detail="Premium request already sent. Please wait for admin approval")
+
     create_doc(
-        COLL.payments,
+        COLL.admin_chat_messages,
         {
-            "user_id": user["id"],
-            "amount": 1000.0,
-            "payment_method": "razorpay",
-            "transaction_id": transaction_id,
-            "status": "completed",
-            "plan_duration_days": request_data.plan_days,
+            "user_id": current_user.id,
+            "sender_role": "player",
+            "message": f"PREMIUM_UPGRADE_REQUEST | plan_days={request_data.plan_days} | amount=1000",
+            "is_read": False,
             "created_at": now_utc(),
-            "updated_at": now_utc(),
         },
     )
 
-    create_doc(
-        COLL.finance_transactions,
-        {
-            "user_id": user["id"],
-            "transaction_type": "credit",
-            "amount": 1000.0,
-            "category": "premium_payment",
-            "description": f"Premium payment by {user.get('email')}",
-            "reference_id": transaction_id,
-            "created_at": now_utc(),
-        },
-    )
-    
-    log_action("Premium upgrade", user_id=user["id"], details=f"{request_data.plan_days} days")
+    log_action("Premium upgrade requested", user_id=user["id"], details=f"{request_data.plan_days} days")
     
     return {
         "is_premium": user.get("is_premium", False),
         "premium_expiry": user.get("premium_expiry"),
-        "message": f"Successfully upgraded to premium for {request_data.plan_days} days!"
+        "message": "Premium request sent to admin. You will be upgraded after approval."
     }
 
 

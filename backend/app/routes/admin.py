@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime, timedelta, timezone
 from typing import List, Union
+import uuid
 
 from app.config import settings
 from app.schemas import AdminChatCreate, AdminChatResponse
@@ -20,6 +21,14 @@ def _same_id(left, right) -> bool:
 
 def _matches_user_identity(row: dict, value: Union[int, str]) -> bool:
     return _same_id(row.get("id"), value) or _same_id(row.get("uid"), value)
+
+
+def _current_user_chat_ids(current_user) -> set[str]:
+    ids = set()
+    for value in (getattr(current_user, "id", None), getattr(current_user, "uid", None)):
+        if value is not None:
+            ids.add(str(value))
+    return ids
 
 
 def _sort_ts(value) -> float:
@@ -75,6 +84,75 @@ async def toggle_user_premium(user_id: Union[int, str], days: int = 30, admin=De
     log_action("Admin toggled user premium", user_id=admin.id, details=f"User {user_id}")
 
     return {"message": "User premium status updated"}
+
+
+@router.post("/users/{user_id}/approve-premium")
+async def approve_premium_request(user_id: Union[int, str], days: int = 30, admin=Depends(get_admin_user)):
+    user = first_doc(COLL.users, predicate=lambda row: _matches_user_identity(row, user_id))
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.get("role") != "player":
+        raise HTTPException(status_code=400, detail="Only players can be upgraded to premium")
+
+    if user.get("is_premium", False):
+        raise HTTPException(status_code=400, detail="User is already premium")
+
+    now = now_utc()
+    expiry = now + timedelta(days=days)
+    update_doc(
+        COLL.users,
+        user.get("_doc_id") or user.get("id"),
+        {
+            "is_premium": True,
+            "premium_start_date": now,
+            "premium_expiry": expiry,
+            "updated_at": now,
+        },
+    )
+
+    transaction_id = str(uuid.uuid4())
+    create_doc(
+        COLL.payments,
+        {
+            "user_id": user.get("id"),
+            "amount": float(settings.PREMIUM_COST),
+            "payment_method": "admin_approved",
+            "transaction_id": transaction_id,
+            "status": "completed",
+            "plan_duration_days": days,
+            "created_at": now,
+            "updated_at": now,
+        },
+    )
+
+    create_doc(
+        COLL.finance_transactions,
+        {
+            "user_id": user.get("id"),
+            "transaction_type": "credit",
+            "amount": float(settings.PREMIUM_COST),
+            "category": "premium_payment",
+            "description": f"Premium approved by admin for {user.get('email')}",
+            "reference_id": transaction_id,
+            "created_at": now,
+        },
+    )
+
+    create_doc(
+        COLL.admin_chat_messages,
+        {
+            "user_id": user.get("uid") or user.get("id"),
+            "sender_role": "admin",
+            "message": f"Your premium request has been approved for {days} days.",
+            "is_read": False,
+            "created_at": now,
+        },
+    )
+
+    log_action("Admin approved premium request", user_id=admin.id, details=f"User {user_id}")
+    return {"message": "Premium request approved and user upgraded"}
 
 
 @router.delete("/users/{user_id}")
@@ -309,9 +387,11 @@ async def send_admin_chat_message(user_id: Union[int, str], payload: AdminChatCr
 
 @router.get("/my-chat", response_model=list[AdminChatResponse])
 async def get_my_chat(current_user=Depends(get_current_user)):
+    chat_ids = _current_user_chat_ids(current_user)
+
     messages = list_docs(
         COLL.admin_chat_messages,
-        predicate=lambda row: row.get("user_id") == current_user.id,
+        predicate=lambda row: str(row.get("user_id")) in chat_ids,
         sort_key="created_at",
         reverse=False,
     )
@@ -330,10 +410,12 @@ async def send_message_to_admin(payload: AdminChatCreate, current_user=Depends(g
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
+    effective_user_id = getattr(current_user, "uid", None) or current_user.id
+
     chat = create_doc(
         COLL.admin_chat_messages,
         {
-            "user_id": current_user.id,
+            "user_id": effective_user_id,
             "sender_role": "player",
             "message": message,
             "is_read": False,

@@ -89,10 +89,9 @@ export function ProfilePage() {
   const handleUpgradePremium = async () => {
     try {
       await premiumService.upgradePremium(30);
-      alert('Upgraded to premium! ✨');
-      window.location.reload();
+      alert('Premium request sent to admin. You will be upgraded after approval.');
     } catch (error) {
-      alert('Premium upgrade failed');
+      alert(error.response?.data?.detail || 'Failed to send premium request');
     }
   };
 
@@ -156,7 +155,7 @@ export function ProfilePage() {
 
               {isOwnProfile && !user.is_premium && (
                 <button className={styles.premiumBtn} onClick={handleUpgradePremium}>
-                  🚀 Upgrade to Premium - ₹1000/month
+                  🚀 Request Premium - Rs 1000/month
                 </button>
               )}
             </div>

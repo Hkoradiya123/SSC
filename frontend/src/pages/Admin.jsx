@@ -153,6 +153,24 @@ export function AdminPage() {
     }
   };
 
+  const handleApprovePremiumRequest = async () => {
+    if (!activeThreadUser) return;
+    try {
+      await adminService.approvePremiumRequest(activeThreadUser.user_id, 30);
+      alert('Premium request approved successfully.');
+      const threadRes = await adminService.getChatThread(activeThreadUser.user_id);
+      setMessages(threadRes.data || []);
+      await loadDashboard();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to approve premium request');
+    }
+  };
+
+  const hasPendingPremiumRequest = messages.some((msg) => (
+    msg.sender_role === 'player'
+    && String(msg.message || '').startsWith('PREMIUM_UPGRADE_REQUEST')
+  ));
+
   const handleTogglePremium = async (userId) => {
     try {
       setActionBusy(userId, 'premium', true);
@@ -485,6 +503,11 @@ export function AdminPage() {
                     <div className={styles.chatHeader}>
                       <h3>{activeThreadUser.name}</h3>
                       <small>{activeThreadUser.email}</small>
+                      {hasPendingPremiumRequest && (
+                        <button className={styles.pageBtn} onClick={handleApprovePremiumRequest}>
+                          Approve Premium
+                        </button>
+                      )}
                     </div>
                     <div className={styles.messages}>
                       {messages.length === 0 ? (

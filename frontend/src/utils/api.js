@@ -377,6 +377,8 @@ export const adminService = {
     api.get(`/admin/users?skip=${skip}&limit=${limit}`),
   toggleUserPremium: (userId, days = 30) =>
     api.put(`/admin/users/${userId}/premium?days=${days}`),
+  approvePremiumRequest: (userId, days = 30) =>
+    api.post(`/admin/users/${userId}/approve-premium?days=${days}`),
   deactivateUser: (userId) => api.delete(`/admin/users/${userId}`),
   activateUser: (userId) => api.post(`/admin/users/${userId}/activate`),
   updateUserRole: (userId, role) => api.put(`/admin/users/${userId}/role?role=${role}`),
